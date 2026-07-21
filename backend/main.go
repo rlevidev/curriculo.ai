@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"text/template"
 	"time"
@@ -95,7 +96,19 @@ type ResumeData struct {
 }
 
 func texEscape(s string) string {
-	return s
+	replacer := strings.NewReplacer(
+		"&", "\\&",
+		"%", "\\%",
+		"$", "\\$",
+		"#", "\\#",
+		"_", "\\_",
+		"{", "\\{",
+		"}", "\\}",
+		"~", "\\textasciitilde{}",
+		"^", "\\textasciicircum{}",
+		"\\", "\\textbackslash{}",
+	)
+	return replacer.Replace(s)
 }
 
 func generatePdfHandler(w http.ResponseWriter, r *http.Request) {
