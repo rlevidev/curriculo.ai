@@ -1,0 +1,9 @@
+name: Keep Alive
+on:
+  schedule:
+    - cron: '*/14 * * * *'
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -f https://curriculo-ai-backend.onrender.com/health || exit 0
