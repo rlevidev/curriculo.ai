@@ -1,11 +1,12 @@
-import { useEffect } from 'react';
+import React from 'react';
+import type { ResumeData } from '../types';
 
 interface PreviewPaneProps {
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
   onExportPdf?: () => void;
   isExporting?: boolean;
-  resumeData: any;
+  resumeData: ResumeData;
   previewRef: React.RefObject<HTMLDivElement | null>;
   overflowWarning: string | null;
 }
@@ -19,40 +20,13 @@ const PreviewPane: React.FC<PreviewPaneProps> = ({
   onExportPdf,
   isExporting
 }) => {
-  // Function to escape HTML entities (for security, though we're not rendering HTML in preview)
-  const escapeHtml = (text: string): string => {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  };
-
-  // Function to check for overflow
-  useEffect(() => {
-    if (!previewRef.current) return;
-
-    const checkOverflow = () => {
-      const previewContainer = previewRef.current;
-      if (!previewContainer) return;
-
-      // We'll let the parent handle the warning display
-    };
-
-    const observer = new ResizeObserver(checkOverflow);
-    observer.observe(previewRef.current);
-
-    return () => observer.disconnect();
-  }, [resumeData]); // Re-run when resume data changes
-
   return (
     <div className={`preview-pane ${isMobileOpen ? 'mobile-open' : ''}`} ref={previewRef}>
       <div className="preview-modal-topbar">
         <button className="btn-back" onClick={onCloseMobile}>← Voltar</button>
-        <button 
-          className="btn-export" 
-          onClick={onExportPdf} 
+        <button
+          className="btn-export"
+          onClick={onExportPdf}
           disabled={isExporting}
         >
           {isExporting ? 'Exportando...' : 'Exportar PDF ↓'}
@@ -77,23 +51,23 @@ const PreviewPane: React.FC<PreviewPaneProps> = ({
 
           {/* Header */}
           <div className="cv-header">
-            <p className="cv-name">{escapeHtml(resumeData.name || '')}</p>
-            <p className="cv-role">{escapeHtml(resumeData.title || '')}</p>
+            <p className="cv-name">{resumeData.name || ''}</p>
+            <p className="cv-role">{resumeData.title || ''}</p>
             <p className="cv-contacts">
-              {resumeData.email && <span id="pvEmail">{escapeHtml(resumeData.email)}</span>}
+              {resumeData.email && <span id="pvEmail">{resumeData.email}</span>}
               {resumeData.location && (
                 <span id="pvCity">
-                  {resumeData.email ? ' · ' : ''}{escapeHtml(resumeData.location)}
+                  {resumeData.email ? ' · ' : ''}{resumeData.location}
                 </span>
               )}
               {resumeData.linkedin && (
                 <span id="pvLinkedin">
-                  {(resumeData.email || resumeData.location) ? ' · ' : ''}{escapeHtml(resumeData.linkedin)}
+                  {(resumeData.email || resumeData.location) ? ' · ' : ''}{resumeData.linkedin}
                 </span>
               )}
               {resumeData.github && (
                 <span id="pvGithub">
-                  {(resumeData.email || resumeData.location || resumeData.linkedin) ? ' · ' : ''}{escapeHtml(resumeData.github)}
+                  {(resumeData.email || resumeData.location || resumeData.linkedin) ? ' · ' : ''}{resumeData.github}
                 </span>
               )}
             </p>
@@ -103,17 +77,17 @@ const PreviewPane: React.FC<PreviewPaneProps> = ({
           {resumeData.education.length > 0 && (
             <div className="cv-section">
               <h2>Educação</h2>
-              {resumeData.education.map((edu: any, index: number) => (
+              {resumeData.education.map((edu, index) => (
                 <div className="cv-entry" key={index}>
                   <div className="cv-entry-top">
-                    <span className="cv-entry-title">{escapeHtml(edu.institution || '')}</span>
-                    <span className="cv-entry-meta">{escapeHtml(edu.period || '')}</span>
+                    <span className="cv-entry-title">{edu.institution || ''}</span>
+                    <span className="cv-entry-meta">{edu.period || ''}</span>
                   </div>
-                  <p className="cv-entry-sub">{escapeHtml(edu.degree || '')}</p>
+                  <p className="cv-entry-sub">{edu.degree || ''}</p>
                   {edu.notes && edu.notes.length > 0 && (
                     <ul>
-                      {edu.notes.map((note: string, noteIndex: number) => (
-                        <li key={noteIndex}>{escapeHtml(note)}</li>
+                      {edu.notes.map((note, noteIndex) => (
+                        <li key={noteIndex}>{note}</li>
                       ))}
                     </ul>
                   )}
@@ -128,9 +102,7 @@ const PreviewPane: React.FC<PreviewPaneProps> = ({
               <h2>Skills técnicas</h2>
               <p className="cv-skills">
                 <b>Linguagens & tecnologias:</b>{' '}
-                {[...resumeData.skills.languages, ...resumeData.skills.technologies]
-                  .map((skill: string) => escapeHtml(skill))
-                  .join(', ')}
+                {[...resumeData.skills.languages, ...resumeData.skills.technologies].join(', ')}
               </p>
             </div>
           )}
@@ -139,23 +111,23 @@ const PreviewPane: React.FC<PreviewPaneProps> = ({
           {resumeData.experiences.length > 0 && (
             <div className="cv-section">
               <h2>Experiência profissional</h2>
-              {resumeData.experiences.map((exp: any, index: number) => (
+              {resumeData.experiences.map((exp, index) => (
                 <div className="cv-entry" key={index}>
                   <div className="cv-entry-top">
-                    <span className="cv-entry-title">{escapeHtml(exp.company || '')}</span>
-                    <span className="cv-entry-meta">{escapeHtml(exp.period || '')}</span>
+                    <span className="cv-entry-title">{exp.company || ''}</span>
+                    <span className="cv-entry-meta">{exp.period || ''}</span>
                   </div>
-                  <p className="cv-entry-sub">{escapeHtml(exp.role || '')}</p>
+                  <p className="cv-entry-sub">{exp.role || ''}</p>
                   {exp.location && (
                     <p className="cv-entry-sub" style={{ marginTop: '4px' }}>
-                      {escapeHtml(exp.location)}
+                      {exp.location}
                     </p>
                   )}
                   {exp.bullets && exp.bullets.length > 0 && (
                     <ul>
-                      {exp.bullets.map((bullet: string, bulletIndex: number) => (
+                      {exp.bullets.map((bullet, bulletIndex) => (
                         <li key={bulletIndex}>
-                          {escapeHtml(bullet)}
+                          {bullet}
                         </li>
                       ))}
                     </ul>
@@ -169,24 +141,24 @@ const PreviewPane: React.FC<PreviewPaneProps> = ({
           {resumeData.projects.length > 0 && (
             <div className="cv-section">
               <h2>Projetos</h2>
-              {resumeData.projects.map((proj: any, index: number) => (
+              {resumeData.projects.map((proj, index) => (
                 <div className="cv-entry" key={index}>
                   <div className="cv-entry-top">
-                    <span className="cv-entry-title">{escapeHtml(proj.name || '')}</span>
-                    <span className="cv-entry-meta">{escapeHtml(proj.link_url || '')}</span>
+                    <span className="cv-entry-title">{proj.name || ''}</span>
+                    <span className="cv-entry-meta">{proj.link_url || ''}</span>
                   </div>
                   {proj.link_url && (
                     <p style={{ marginTop: '4px' }}>
-                      <a href={proj.link_url} target="_blank" rel="noopener noreferrer">
-                        {escapeHtml(proj.link_label || 'Link')}
+                      <a href={!/^(javascript|data):/i.test(proj.link_url) ? proj.link_url : '#'} target="_blank" rel="noopener noreferrer">
+                        {proj.link_label || 'Link'}
                       </a>
                     </p>
                   )}
                   {proj.bullets && proj.bullets.length > 0 && (
                     <ul>
-                      {proj.bullets.map((bullet: string, bulletIndex: number) => (
+                      {proj.bullets.map((bullet, bulletIndex) => (
                         <li key={bulletIndex}>
-                          {escapeHtml(bullet)}
+                          {bullet}
                         </li>
                       ))}
                     </ul>
@@ -201,9 +173,9 @@ const PreviewPane: React.FC<PreviewPaneProps> = ({
             <div className="cv-section">
               <h2>Idiomas</h2>
               <p className="cv-skills">
-                {resumeData.spokenLanguages.map((lang: any, index: number) => (
+                {resumeData.spokenLanguages.map((lang, index) => (
                   <span key={index} style={{ marginRight: index < resumeData.spokenLanguages.length - 1 ? '8px' : 0 }}>
-                    <b>{escapeHtml(lang.language || '')}:</b> {escapeHtml(lang.level || '')}
+                    <b>{lang.language || ''}:</b> {lang.level || ''}
                   </span>
                 ))}
               </p>
@@ -215,9 +187,9 @@ const PreviewPane: React.FC<PreviewPaneProps> = ({
             <div className="cv-section">
               <h2>Certificados</h2>
               <p className="cv-skills">
-                {resumeData.certifications.map((cert: string, index: number) => (
+                {resumeData.certifications.map((cert, index) => (
                   <span key={index} style={{ marginRight: index < resumeData.certifications.length - 1 ? '8px' : 0 }}>
-                    {escapeHtml(cert)}
+                    {cert}
                   </span>
                 ))}
               </p>

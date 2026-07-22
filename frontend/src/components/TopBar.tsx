@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import type { ATSResult } from '../types';
 
 interface TopBarProps {
   serverStatus: 'pending' | 'online' | 'offline';
-  atsScore: { score: number; criteria: Array<{label: string; passed: boolean; points: number}> };
+  atsScore: ATSResult;
   isExporting: boolean;
   exportError: string | null;
   onExportPdf: () => void;
@@ -18,10 +19,15 @@ const TopBar: React.FC<TopBarProps> = ({
   const [exportErrorVisible, setExportErrorVisible] = useState(false);
 
   // Show export error for 5 seconds
-  if (exportError && !exportErrorVisible) {
-    setExportErrorVisible(true);
-    setTimeout(() => setExportErrorVisible(false), 5000);
-  }
+  useEffect(() => {
+    if (exportError) {
+      setExportErrorVisible(true);
+      const timer = setTimeout(() => setExportErrorVisible(false), 5000);
+      return () => clearTimeout(timer);
+    } else {
+      setExportErrorVisible(false);
+    }
+  }, [exportError]);
 
   return (
     <div className="topbar">

@@ -170,6 +170,15 @@ function App() {
   // Handle updating a specific field in a list item
   const handleUpdateItemField = <T extends object>(fieldName: keyof ResumeData, index: number, fieldKey: keyof T, value: any) => {
     setResumeData((prev) => {
+      if (fieldName === 'skills') {
+        return {
+          ...prev,
+          skills: {
+            ...prev.skills,
+            [fieldKey as any]: value
+          }
+        };
+      }
       const currentArray = [...(prev[fieldName] as T[])];
       if (index < 0 || index >= currentArray.length) return prev;
       const item = { ...currentArray[index], [fieldKey]: value };
