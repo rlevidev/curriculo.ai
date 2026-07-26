@@ -199,11 +199,26 @@ func generatePdfHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(pdf)
 }
 
+func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "https://rlevidev.github.io")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		
+		next(w, r)
+	}
+}
+
 func main() {
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/health", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "200 OK")
-	})
-	http.HandleFunc("/generate-pdf", rateLimiter(generatePdfHandler))
+	}))
+	http.HandleFunc("/generate-pdf", corsMiddleware(rateLimiter(generatePdfHandler)))
 	http.ListenAndServe(":8080", nil)
 }
