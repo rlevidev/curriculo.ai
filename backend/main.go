@@ -215,10 +215,15 @@ func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	http.HandleFunc("/health", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "200 OK")
 	}))
 	http.HandleFunc("/generate-pdf", corsMiddleware(rateLimiter(generatePdfHandler)))
-	http.ListenAndServe(":8080", nil)
+	http.ListenAndServe(":"+port, nil)
 }
