@@ -196,26 +196,6 @@ const PreviewPane: React.FC<PreviewPaneProps> = ({
           </p>
         </div>
       </div>
-
-      {/* Overflow warning */}
-      {overflowWarning && (
-        <div className="overflow-warning" style={{
-          position: 'absolute',
-          bottom: '20px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'var(--amber)',
-          color: '#04211c',
-          padding: '8px 16px',
-          borderRadius: '4px',
-          fontFamily: 'var(--font-mono)',
-          fontSize: '12px',
-          whiteSpace: 'nowrap',
-          zIndex: 1000
-        }}>
-          {overflowWarning}
-        </div>
-      )}
     </div>
     </div>
   );
