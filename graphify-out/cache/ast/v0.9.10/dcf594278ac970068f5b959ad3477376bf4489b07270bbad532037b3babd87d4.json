@@ -1,1 +1,0 @@
-{"nodes": [{"id": "pkg_github_com_rlevidev_curriculo_ai", "label": "github.com/rlevidev/curriculo.ai", "file_type": "code", "type": "package", "ecosystem": "go", "source_file": "backend/go.mod", "source_location": "L1"}], "edges": []}

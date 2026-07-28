@@ -1,0 +1,8 @@
+# Local config e secrets
+.claude/
+CLAUDE.md
+
+# Generated / infra local
+graphify-out/
+docs/
+backend/curriculo.ai
