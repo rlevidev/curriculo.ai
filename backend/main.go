@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -181,7 +182,10 @@ func generatePdfHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cmd := exec.Command("pdflatex", "-no-shell-escape", "-output-directory", dir, texPath)
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "pdflatex", "-no-shell-escape", "-output-directory", dir, texPath)
 	if err := cmd.Run(); err != nil {
 		http.Error(w, "failed to generate PDF", http.StatusInternalServerError)
 		return
@@ -200,16 +204,21 @@ func generatePdfHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	allowedOrigin := os.Getenv("FRONTEND_ORIGIN")
+	if allowedOrigin == "" {
+		allowedOrigin = "https://rlevidev.github.io"
+	}
+
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "https://rlevidev.github.io")
+		w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		
+
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		
+
 		next(w, r)
 	}
 }

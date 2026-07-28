@@ -7,6 +7,7 @@ interface TopBarProps {
   isExporting: boolean;
   exportError: string | null;
   onExportPdf: () => void;
+  canExport: boolean;
 }
 
 const TopBar: React.FC<TopBarProps> = ({
@@ -14,7 +15,8 @@ const TopBar: React.FC<TopBarProps> = ({
   atsScore,
   isExporting,
   exportError,
-  onExportPdf
+  onExportPdf,
+  canExport
 }) => {
   const [exportErrorVisible, setExportErrorVisible] = useState(false);
 
@@ -48,10 +50,11 @@ const TopBar: React.FC<TopBarProps> = ({
               serverStatus === 'offline' ? 'servidor offline' : 'servidor acordando...'}
           </span>
         </div>
+        <span id="atsScore">{atsScore.score}/100</span>
         <button
           className="btn-export"
           onClick={onExportPdf}
-          disabled={isExporting || !(atsScore.score > 0)} // Disable if exporting or no data
+          disabled={isExporting || !canExport}
         >
           {isExporting ? 'Exportando PDF...' : 'Exportar PDF ↓'}
         </button>

@@ -5,6 +5,8 @@ import EditorPane from './components/EditorPane';
 import PreviewPane from './components/PreviewPane';
 import { type ResumeData, calculateATSScore } from './types';
 
+const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8080') as string;
+
 // Default resume data structure
 const defaultResumeData: ResumeData = {
   name: '',
@@ -118,16 +120,23 @@ function App() {
   // Check server status
   const checkServerStatus = useCallback(async () => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/health`, {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch(`${API_URL}/health`, {
         method: 'GET',
-        signal: AbortSignal.timeout(5000)
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
       if (response.ok) {
         setServerStatus('online');
       } else {
         setServerStatus('offline');
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        setServerStatus('offline');
+        return;
+      }
       setServerStatus('offline');
     }
   }, []);
@@ -264,7 +273,7 @@ function App() {
     }, 10000);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/generate-pdf`, {
+      const response = await fetch(`${API_URL}/generate-pdf`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -305,6 +314,7 @@ function App() {
         isExporting={isExporting}
         exportError={exportError}
         onExportPdf={handleExportPdf}
+        canExport={resumeData.name.trim() !== '' && resumeData.title.trim() !== ''}
       />
       <div className="layout">
         <EditorPane
