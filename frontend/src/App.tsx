@@ -33,7 +33,6 @@ function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [atsScore, setAtsScore] = useState({ score: 0, criteria: [] as Array<{label: string; passed: boolean; points: number}> });
-  const [overflowWarning, setOverflowWarning] = useState<string | null>(null);
   const [showMobilePreview, setShowMobilePreview] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
   const healthCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -86,36 +85,6 @@ function App() {
     const result = calculateATSScore(resumeData);
     setAtsScore(result);
   }, [resumeData]);
-
-  // Check for overflow in preview pane
-  useEffect(() => {
-    if (!previewRef.current) return;
-
-    const checkOverflow = () => {
-      const previewContainer = previewRef.current;
-      if (!previewContainer) return;
-
-      // Approximate A4 height at 96dpi: 1123px
-      const overflowThreshold = 1123;
-      const scrollHeight = previewContainer.scrollHeight;
-
-      if (scrollHeight > overflowThreshold) {
-        const estimatedPages = Math.ceil(scrollHeight / overflowThreshold);
-        setOverflowWarning(`⚠ Conteúdo pode ocupar ~${estimatedPages} páginas. Considere reduzir o texto.`);
-      } else {
-        setOverflowWarning(null);
-      }
-    };
-
-    // Check after DOM updates
-    const observer = new ResizeObserver(checkOverflow);
-    observer.observe(previewRef.current);
-
-    // Initial check
-    checkOverflow();
-
-    return () => observer.disconnect();
-  }, [resumeData]); // Re-run when resume data changes (which triggers preview update)
 
   // Check server status
   const checkServerStatus = useCallback(async () => {
