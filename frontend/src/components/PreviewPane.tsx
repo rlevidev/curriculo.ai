@@ -8,13 +8,11 @@ interface PreviewPaneProps {
   isExporting?: boolean;
   resumeData: ResumeData;
   previewRef: React.RefObject<HTMLDivElement | null>;
-  overflowWarning: string | null;
 }
 
 const PreviewPane: React.FC<PreviewPaneProps> = ({
   resumeData,
   previewRef,
-  overflowWarning,
   isMobileOpen,
   onCloseMobile,
   onExportPdf,
@@ -36,9 +34,6 @@ const PreviewPane: React.FC<PreviewPaneProps> = ({
       <div className="paper-wrap">
         <div className="paper-toprow">
           <span className="paper-filename">curriculo.pdf</span>
-          <span className="ats-badge">
-            {/* ATS badge will be handled in TopBar */}
-          </span>
         </div>
 
         <div className="paper">

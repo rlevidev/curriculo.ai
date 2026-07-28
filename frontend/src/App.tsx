@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import './App.css';
 import TopBar from './components/TopBar';
 import EditorPane from './components/EditorPane';
