@@ -38,8 +38,6 @@ const TopBar: React.FC<TopBarProps> = ({
       </div>
       <nav className="tabs">
         <button className="active">Editor</button>
-        <button>Templates</button>
-        <button>Histórico</button>
       </nav>
       <div className="topbar-right">
         <div className="compile-status" id="compileStatus">
