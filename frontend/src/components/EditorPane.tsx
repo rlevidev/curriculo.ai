@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { ResumeData } from '../types';
 
 interface EditorPaneProps {
@@ -22,6 +22,18 @@ const EditorPane: React.FC<EditorPaneProps> = ({
   onRemoveNestedItem,
   onUpdateArrayField
 }) => {
+  const [skillsLanguages, setSkillsLanguages] = useState(() => resumeData.skills.languages?.join(', ') || '');
+  const [skillsTechnologies, setSkillsTechnologies] = useState(() => resumeData.skills.technologies?.join(', ') || '');
+
+  // Keep local state in sync if external data changes (e.g. initial load)
+  useEffect(() => {
+    setSkillsLanguages(resumeData.skills.languages?.join(', ') || '');
+  }, [resumeData.skills.languages]);
+
+  useEffect(() => {
+    setSkillsTechnologies(resumeData.skills.technologies?.join(', ') || '');
+  }, [resumeData.skills.technologies]);
+
   return (
     <div className="editor">
       <p className="editor-hint">
@@ -216,39 +228,43 @@ const EditorPane: React.FC<EditorPaneProps> = ({
       </details>
 
       {/* Skills Section */}
-      <details className="section-block">
-        <summary className="section-head">
-          <span className="section-num">04</span>
-          <span className="section-name">Skills</span>
-          <span className="section-chevron">▸</span>
-        </summary>
-        <div className="section-body">
-          <div className="field">
-            <label>Linguagens de programação</label>
-            <textarea
-              value={resumeData.skills.languages?.join(', ') || ''}
-              onChange={(e) => {
-                const languages = e.target.value.split(',').map(lang => lang.trim()).filter(Boolean);
-                onUpdateItemField('skills', 0, 'languages', languages);
-              }}
-              rows={2}
-              maxLength={200}
-            />
+        <details className="section-block">
+          <summary className="section-head">
+            <span className="section-num">04</span>
+            <span className="section-name">Skills</span>
+            <span className="section-chevron">▸</span>
+          </summary>
+          <div className="section-body">
+            <div className="field">
+              <label htmlFor="skills-languages">Linguagens de programação</label>
+              <textarea
+                id="skills-languages"
+                rows={2}
+                maxLength={200}
+                value={skillsLanguages}
+                onChange={(e) => setSkillsLanguages(e.target.value)}
+                onBlur={(e) => {
+                  const arr = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                  onUpdateItemField('skills', -1, 'languages', arr);
+                }}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="skills-technologies">Tecnologias</label>
+              <textarea
+                id="skills-technologies"
+                rows={2}
+                maxLength={200}
+                value={skillsTechnologies}
+                onChange={(e) => setSkillsTechnologies(e.target.value)}
+                onBlur={(e) => {
+                  const arr = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                  onUpdateItemField('skills', -1, 'technologies', arr);
+                }}
+              />
+            </div>
           </div>
-          <div className="field">
-            <label>Tecnologias</label>
-            <textarea
-              value={resumeData.skills.technologies?.join(', ') || ''}
-              onChange={(e) => {
-                const technologies = e.target.value.split(',').map(tech => tech.trim()).filter(Boolean);
-                onUpdateItemField('skills', 0, 'technologies', technologies);
-              }}
-              rows={2}
-              maxLength={200}
-            />
-          </div>
-        </div>
-      </details>
+        </details>
 
       {/* Experience Section */}
       <details className="section-block">
