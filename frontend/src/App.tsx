@@ -5,6 +5,8 @@ import EditorPane from './components/EditorPane';
 import PreviewPane from './components/PreviewPane';
 import { type ResumeData, calculateATSScore } from './types';
 
+import { normalizeResumeData } from './utils/normalize';
+
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8080') as string;
 
 // Default resume data structure
@@ -34,59 +36,35 @@ function App() {
   const [exportError, setExportError] = useState<string | null>(null);
   const [atsScore, setAtsScore] = useState({ score: 0, criteria: [] as Array<{label: string; passed: boolean; points: number}> });
   const [showMobilePreview, setShowMobilePreview] = useState(false);
-  const previewRef = useRef<HTMLDivElement>(null);
   const healthCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const exportTimeoutRef = useRef<ReturnType<typeof setTimeout> | null | undefined>(null);
 
   // Load resume data from localStorage on initial load
   useEffect(() => {
-    const saved = localStorage.getItem('resume-draft');
+    const saved = localStorage.getItem('resume-draft-v2');
+    
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // Validate and merge with default structure to ensure all fields exist
-        setResumeData({ ...defaultResumeData, ...parsed });
+        setResumeData(normalizeResumeData(parsed));
+        return;
       } catch (e) {
-        console.error('Failed to parse resume data from localStorage', e);
-        setResumeData(defaultResumeData);
+        console.error('Failed to parse v2 resume data from localStorage', e);
       }
     }
 
-    // Initial health check
-    checkServerStatus();
-
-    // Set up interval for health checks when offline/pending
-    healthCheckIntervalRef.current = setInterval(() => {
-      if (serverStatus !== 'online') {
-        checkServerStatus();
+    // Try fallback to v1
+    const oldSaved = localStorage.getItem('resume-draft');
+    if (oldSaved) {
+      try {
+        const parsed = JSON.parse(oldSaved);
+        setResumeData(normalizeResumeData(parsed));
+      } catch (e) {
+        console.error('Failed to parse v1 resume data from localStorage', e);
+        setResumeData(defaultResumeData);
       }
-    }, 10000);
+    }
+  }, []);
 
-    return () => {
-      if (healthCheckIntervalRef.current) {
-        clearInterval(healthCheckIntervalRef.current);
-      }
-      if (exportTimeoutRef.current) {
-        clearTimeout(exportTimeoutRef.current);
-      }
-    };
-  }, [serverStatus]);
-
-  // Save resume data to localStorage whenever it changes (debounced)
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      localStorage.setItem('resume-draft', JSON.stringify(resumeData));
-    }, 500);
-    return () => clearTimeout(handler);
-  }, [resumeData]);
-
-  // Update ATS score whenever resume data changes
-  useEffect(() => {
-    const result = calculateATSScore(resumeData);
-    setAtsScore(result);
-  }, [resumeData]);
-
-  // Check server status
   const checkServerStatus = useCallback(async () => {
     try {
       const controller = new AbortController();
@@ -109,6 +87,36 @@ function App() {
       setServerStatus('offline');
     }
   }, []);
+
+  useEffect(() => {
+    // Initial health check
+    checkServerStatus();
+
+    // Set up interval for health checks when offline/pending
+    healthCheckIntervalRef.current = setInterval(() => {
+      checkServerStatus();
+    }, 10000);
+
+    return () => {
+      if (healthCheckIntervalRef.current) {
+        clearInterval(healthCheckIntervalRef.current);
+      }
+    };
+  }, [checkServerStatus]);
+
+  // Save resume data to localStorage whenever it changes (debounced)
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      localStorage.setItem('resume-draft-v2', JSON.stringify(resumeData));
+    }, 500);
+    return () => clearTimeout(handler);
+  }, [resumeData]);
+
+  // Update ATS score whenever resume data changes
+  useEffect(() => {
+    const result = calculateATSScore(resumeData);
+    setAtsScore(result);
+  }, [resumeData]);
 
   // Handle input change for simple fields
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -236,11 +244,6 @@ function App() {
     setIsExporting(true);
     setExportError(null);
 
-    // Change button text after 10 seconds if still exporting
-    exportTimeoutRef.current = setTimeout(() => {
-      // This will be handled by the button's loading state
-    }, 10000);
-
     try {
       const response = await fetch(`${API_URL}/generate-pdf`, {
         method: 'POST',
@@ -251,6 +254,10 @@ function App() {
       });
 
       if (!response.ok) {
+        const isJson = response.headers.get('content-type')?.includes('application/json');
+        if (!isJson) {
+          throw new Error('Erro no servidor ao gerar PDF. Tente novamente mais tarde.');
+        }
         const errorData = await response.json();
         throw new Error(errorData.message || 'Falha ao gerar PDF');
       }
@@ -268,10 +275,6 @@ function App() {
       setExportError(err.message || 'Erro desconhecido ao gerar PDF');
     } finally {
       setIsExporting(false);
-      if (exportTimeoutRef.current) {
-        clearTimeout(exportTimeoutRef.current);
-        exportTimeoutRef.current = undefined;
-      }
     }
   };
 
@@ -298,7 +301,6 @@ function App() {
         />
         <PreviewPane
           resumeData={resumeData}
-          previewRef={previewRef}
           isMobileOpen={showMobilePreview}
           onCloseMobile={() => setShowMobilePreview(false)}
           onExportPdf={handleExportPdf}
