@@ -8,3 +8,5 @@ docs/
 backend/curriculo.ai
 backend/main
 rlevidev/
+node_modules/.vite/
+AVALIACAO.md
