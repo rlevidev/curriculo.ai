@@ -28,7 +28,7 @@ type Visitor struct {
 var (
 	visitors = make(map[string]*Visitor)
 	mu       sync.Mutex
-	// ponytail: stdout JSON para coletor do host/Docker, sem agregador dedicado por enquanto
+	// stdout JSON para coletor do host/Docker, sem agregador dedicado por enquanto
 	baseLogger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
 			if a.Key == slog.TimeKey {
@@ -62,7 +62,7 @@ func getRequestID(r *http.Request) string {
 	return ""
 }
 
-// ponytail: sem PII do ResumeData nos logs, só metadados
+// sem PII do ResumeData nos logs, só metadados
 func loggerFor(r *http.Request) *slog.Logger {
 	return baseLogger.With("request_id", getRequestID(r))
 }
