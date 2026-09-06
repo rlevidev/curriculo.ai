@@ -51,12 +51,16 @@ func TestHealthHandler(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	req.RemoteAddr = "127.0.0.1:8080" // Unique IP to avoid conflicts with rate limiter tests
 	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := requestIDMiddleware(loggingMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "200 OK")
-	})
+	}))
 
 	handler.ServeHTTP(rr, req)
+
+	if id := rr.Header().Get("X-Request-ID"); id == "" {
+		t.Errorf("expected X-Request-ID header to be set")
+	}
 
 	if status := rr.Code; status != http.StatusOK {
 		t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusOK)
@@ -78,15 +82,15 @@ func TestGeneratePdfHandler_Success(t *testing.T) {
 
 	// Prepare test data
 	testData := ResumeData{
-		Name:    "John Doe",
-		Title:   "Software Engineer",
-		Email:   "john@example.com",
-		Phone:   "123-456-7890",
+		Name:  "John Doe",
+		Title: "Software Engineer",
+		Email: "john@example.com",
+		Phone: "123-456-7890",
 		Experiences: []Experience{
 			{
-				Role:   "Senior Engineer",
+				Role:    "Senior Engineer",
 				Company: "Tech Corp",
-				Period: "2020-2023",
+				Period:  "2020-2023",
 				Bullets: []string{
 					"Led development of web applications",
 					"Improved system performance by 20%",
@@ -123,9 +127,9 @@ func TestGeneratePdfHandler_MissingFields(t *testing.T) {
 	resetVisitors()
 	// Prepare test data with missing Name
 	testData := ResumeData{
-		Title:   "Software Engineer",
-		Email:   "john@example.com",
-		Phone:   "123-456-7890",
+		Title: "Software Engineer",
+		Email: "john@example.com",
+		Phone: "123-456-7890",
 	}
 	jsonData, _ := json.Marshal(testData)
 
@@ -243,16 +247,16 @@ func TestGeneratePdfHandler_PayloadLimit(t *testing.T) {
 	for i := range largePayload {
 		largePayload[i] = 'a'
 	}
-	
+
 	req := httptest.NewRequest(http.MethodPost, "/generate-pdf", bytes.NewReader(largePayload))
 	req.ContentLength = -1 // simulate chunked/unknown length
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	rr := httptest.NewRecorder()
 	handler := rateLimiter(generatePdfHandler)
-	
+
 	handler.ServeHTTP(rr, req)
-	
+
 	if rr.Code != http.StatusBadRequest && rr.Code != http.StatusRequestEntityTooLarge {
 		t.Errorf("Expected error status for payload too large, got %v", rr.Code)
 	}
@@ -359,7 +363,7 @@ func TestGeneratePdfHandler_CompletePayload(t *testing.T) {
 	if rr.Header().Get("Content-Type") != "application/pdf" {
 		t.Errorf("Handler returned unexpected content type: got %v want application/pdf", rr.Header().Get("Content-Type"))
 	}
-	
+
 	if !strings.HasPrefix(rr.Body.String(), "%PDF") {
 		t.Errorf("Handler did not return a valid PDF")
 	}
@@ -371,8 +375,8 @@ func TestGeneratePdfHandler_LatexInjection(t *testing.T) {
 	}
 
 	testData := ResumeData{
-		Name:    `\input{/etc/passwd}`,
-		Title:   `Software Engineer`,
+		Name:  `\input{/etc/passwd}`,
+		Title: `Software Engineer`,
 	}
 	jsonData, _ := json.Marshal(testData)
 

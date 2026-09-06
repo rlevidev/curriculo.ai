@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **Structured JSON logs:** slog stdlib with UTC timestamps and `service=curriculo-api` for production log aggregation
+- **Request ID tracking:** generate unique ID via `crypto/rand`, propagate via `X-Request-ID` header and all log entries
+- **Request metadata logging:** method, path, status code, and latency in milliseconds for every HTTP request
+- **Error context logging:** validation failures (400), rate limits (429), and PDF generation errors (500) with operation tags
+- **Startup log:** server port and startup event on boot
+
 ## [1.0.0] - 2026-09-04
 
 ### Security
