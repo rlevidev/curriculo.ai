@@ -12,10 +12,6 @@ All notable changes to this project will be documented in this file.
 - **Error context logging:** validation failures (400), rate limits (429), and PDF generation errors (500) with operation tags
 - **Startup log:** server port and startup event on boot
 
-### Changed
-
-- **Replace deprecated `ioutil`:** migrate `ioutil.TempDir`, `ioutil.WriteFile`, `ioutil.ReadFile` to stdlib `os` equivalents
-
 ## [1.0.0] - 2026-09-04
 
 ### Security
@@ -51,3 +47,14 @@ All notable changes to this project will be documented in this file.
 - **Coderabbit suggestions:** fix resume skills state crash
 
 ### Changed
+
+- **Dockerfile multi-stage:** separate Go compilation (`golang:1.24-alpine`) from runtime (`texlive`), reducing image size and cold start time; remove personal PATH entries for reproducible builds
+- **Go APIs:** replace deprecated `ioutil.TempDir`, `ioutil.ReadFile`, `ioutil.WriteFile` with `os` equivalents
+- **CI workflow:** improve deploy concurrency
+- **UI cleanup:** remove dead "Templates"/"Histórico" tabs, unused `previewRef`, and 10-second export timeout
+- **Lint:** fix `exhaustive-deps` warning by isolating health check interval in its own effect
+
+### Removed
+
+- **Dead code:** remove unused imports, dead overflowWarning state, and phantom go.mod file
+- **Local-only files:** move local-only files out of repo, remove node_modules/.vite cache and AVALIACAO.md from index

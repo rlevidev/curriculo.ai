@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Test texEscape function
@@ -39,6 +40,12 @@ func TestTexEscape(t *testing.T) {
 	}
 }
 
+func resetVisitors() {
+	mu.Lock()
+	visitors = make(map[string]*Visitor)
+	mu.Unlock()
+}
+
 // Test health handler
 func TestHealthHandler(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -51,12 +58,12 @@ func TestHealthHandler(t *testing.T) {
 
 	handler.ServeHTTP(rr, req)
 
-	if status := rr.Code; status != http.StatusOK {
-		t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusOK)
-	}
-
 	if id := rr.Header().Get("X-Request-ID"); id == "" {
 		t.Errorf("expected X-Request-ID header to be set")
+	}
+
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusOK)
 	}
 
 	expected := "200 OK"
@@ -67,6 +74,7 @@ func TestHealthHandler(t *testing.T) {
 
 // Test generatePdfHandler with valid input
 func TestGeneratePdfHandler_Success(t *testing.T) {
+	resetVisitors()
 	// Skip test if pdflatex is not available
 	if _, err := exec.LookPath("pdflatex"); err != nil {
 		t.Skip("pdflatex not available, skipping PDF generation test")
@@ -116,6 +124,7 @@ func TestGeneratePdfHandler_Success(t *testing.T) {
 
 // Test generatePdfHandler with missing required fields
 func TestGeneratePdfHandler_MissingFields(t *testing.T) {
+	resetVisitors()
 	// Prepare test data with missing Name
 	testData := ResumeData{
 		Title: "Software Engineer",
@@ -139,6 +148,7 @@ func TestGeneratePdfHandler_MissingFields(t *testing.T) {
 
 // Test rate limiter
 func TestRateLimiter(t *testing.T) {
+	resetVisitors()
 	// Create a simple handler that just returns OK
 	handlerFunc := func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -146,9 +156,18 @@ func TestRateLimiter(t *testing.T) {
 	}
 	limitedHandler := rateLimiter(handlerFunc)
 
+	ip := "192.168.1.100"
+	port1 := ":1111"
+	port2 := ":2222"
+
 	// First 5 requests should succeed (we start with 5 tokens)
 	for i := 1; i <= 5; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		if i%2 == 0 {
+			req.RemoteAddr = ip + port1
+		} else {
+			req.RemoteAddr = ip + port2
+		}
 		rr := httptest.NewRecorder()
 		limitedHandler.ServeHTTP(rr, req)
 		if rr.Code != http.StatusOK {
@@ -157,8 +176,9 @@ func TestRateLimiter(t *testing.T) {
 		}
 	}
 
-	// 6th request should be rate limited (no tokens left)
+	// 6th request should be rate limited (no tokens left, even on different port)
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.RemoteAddr = ip + ":3333"
 	rr := httptest.NewRecorder()
 	limitedHandler.ServeHTTP(rr, req)
 	if rr.Code != http.StatusTooManyRequests {
@@ -166,12 +186,18 @@ func TestRateLimiter(t *testing.T) {
 		return
 	}
 
-	// 7th request should also be rate limited (no token replenishment in current implementation)
+	// Wait for refill window (e.g. mock it by modifying lastSeen)
+	mu.Lock()
+	visitors[ip].lastSeen = time.Now().Add(-2 * time.Hour)
+	mu.Unlock()
+
+	// Request should succeed now
 	req = httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.RemoteAddr = ip + port1
 	rr = httptest.NewRecorder()
 	limitedHandler.ServeHTTP(rr, req)
-	if rr.Code != http.StatusTooManyRequests {
-		t.Errorf("Request 7 should be rate limited: got %v want %v", rr.Code, http.StatusTooManyRequests)
+	if rr.Code != http.StatusOK {
+		t.Errorf("Request after refill should succeed: got %v want %v", rr.Code, http.StatusOK)
 		return
 	}
 
@@ -188,6 +214,7 @@ func TestRateLimiter(t *testing.T) {
 
 // Test rate limiter with same IP after tokens exhausted (should still be limited)
 func TestRateLimiter_SameIPAfterExhaustion(t *testing.T) {
+	resetVisitors()
 	handlerFunc := func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
@@ -195,10 +222,10 @@ func TestRateLimiter_SameIPAfterExhaustion(t *testing.T) {
 	limitedHandler := rateLimiter(handlerFunc)
 
 	// Exhaust tokens for a specific IP
-	ip := "10.0.0.1:54321"
+	ip := "10.0.0.1"
 	for i := 0; i < 5; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		req.RemoteAddr = ip
+		req.RemoteAddr = ip + ":54321"
 		rr := httptest.NewRecorder()
 		limitedHandler.ServeHTTP(rr, req)
 		if rr.Code != http.StatusOK {
@@ -208,10 +235,167 @@ func TestRateLimiter_SameIPAfterExhaustion(t *testing.T) {
 
 	// 6th request from same IP should be rate limited
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req.RemoteAddr = ip
+	req.RemoteAddr = ip + ":11111" // different port, same IP
 	rr := httptest.NewRecorder()
 	limitedHandler.ServeHTTP(rr, req)
 	if rr.Code != http.StatusTooManyRequests {
 		t.Errorf("Request after exhaustion should be rate limited: got %v want %v", rr.Code, http.StatusTooManyRequests)
+	}
+}
+func TestGeneratePdfHandler_PayloadLimit(t *testing.T) {
+	largePayload := make([]byte, 50*1024+1)
+	for i := range largePayload {
+		largePayload[i] = 'a'
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/generate-pdf", bytes.NewReader(largePayload))
+	req.ContentLength = -1 // simulate chunked/unknown length
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	handler := rateLimiter(generatePdfHandler)
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest && rr.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("Expected error status for payload too large, got %v", rr.Code)
+	}
+}
+
+func TestEscapeResumeData(t *testing.T) {
+	input := ResumeData{
+		Name:  `\input{/etc/passwd}`,
+		Title: `& % $ # _ { } ~ ^ \`,
+		Experiences: []Experience{
+			{
+				Company: `Company & Co`,
+				Bullets: []string{`Bullet %`},
+			},
+		},
+		Skills: Skills{
+			Languages: []string{`Go \`},
+		},
+	}
+
+	escaped := escapeResumeData(input)
+
+	if escaped.Name != `\textbackslash{}input\{/etc/passwd\}` {
+		t.Errorf("Name not escaped correctly: %s", escaped.Name)
+	}
+	if escaped.Title != `\& \% \$ \# \_ \{ \} \textasciitilde{} \textasciicircum{} \textbackslash{}` {
+		t.Errorf("Title not escaped correctly: %s", escaped.Title)
+	}
+	if escaped.Experiences[0].Company != `Company \& Co` {
+		t.Errorf("Experience.Company not escaped correctly: %s", escaped.Experiences[0].Company)
+	}
+	if escaped.Experiences[0].Bullets[0] != `Bullet \%` {
+		t.Errorf("Experience.Bullets not escaped correctly: %s", escaped.Experiences[0].Bullets[0])
+	}
+	if escaped.Skills.Languages[0] != `Go \textbackslash{}` {
+		t.Errorf("Skills.Languages not escaped correctly: %s", escaped.Skills.Languages[0])
+	}
+}
+
+// Test generatePdfHandler with complete payload
+func TestGeneratePdfHandler_CompletePayload(t *testing.T) {
+	resetVisitors()
+	// Skip test if pdflatex is not available
+	if _, err := exec.LookPath("pdflatex"); err != nil {
+		t.Skip("pdflatex not available, skipping PDF generation test")
+	}
+
+	testData := ResumeData{
+		Name:     "Jane Doe",
+		Title:    "Full Stack Developer",
+		Email:    "jane@example.com",
+		Phone:    "555-0123",
+		LinkedIn: "linkedin.com/in/janedoe",
+		GitHub:   "github.com/janedoe",
+		Location: "New York, NY",
+		Education: []Education{
+			{
+				Institution: "Tech University",
+				Degree:      "B.S. Computer Science",
+				Period:      "2015-2019",
+				Notes:       []string{"Graduated with honors", "President of Coding Club"},
+			},
+		},
+		Experiences: []Experience{
+			{
+				Role:    "Senior Developer",
+				Company: "Tech Corp",
+				Period:  "2020-2023",
+				Bullets: []string{"Built cool things"},
+			},
+		},
+		Projects: []Project{
+			{
+				Name:      "Open Source Project",
+				LinkURL:   "github.com/janedoe/project",
+				LinkLabel: "Link",
+				Bullets:   []string{"10k stars", "Used by many"},
+			},
+		},
+		SpokenLanguages: []Language{
+			{Language: "English", Level: "Native"},
+			{Language: "Spanish", Level: "Fluent"},
+		},
+		Certifications: []string{"AWS Certified Solutions Architect", "CKA"},
+		Skills: Skills{
+			Languages:    []string{"Go", "TypeScript", "Python"},
+			Technologies: []string{"React", "Docker", "Kubernetes"},
+		},
+	}
+	jsonData, _ := json.Marshal(testData)
+
+	req := httptest.NewRequest(http.MethodPost, "/generate-pdf", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	handler := rateLimiter(generatePdfHandler)
+
+	handler.ServeHTTP(rr, req)
+
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusOK)
+	}
+
+	// Check content type
+	if rr.Header().Get("Content-Type") != "application/pdf" {
+		t.Errorf("Handler returned unexpected content type: got %v want application/pdf", rr.Header().Get("Content-Type"))
+	}
+
+	if !strings.HasPrefix(rr.Body.String(), "%PDF") {
+		t.Errorf("Handler did not return a valid PDF")
+	}
+}
+
+func TestGeneratePdfHandler_LatexInjection(t *testing.T) {
+	if _, err := exec.LookPath("pdflatex"); err != nil {
+		t.Skip("pdflatex not available")
+	}
+
+	testData := ResumeData{
+		Name:  `\input{/etc/passwd}`,
+		Title: `Software Engineer`,
+	}
+	jsonData, _ := json.Marshal(testData)
+
+	req := httptest.NewRequest(http.MethodPost, "/generate-pdf", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	handler := rateLimiter(generatePdfHandler)
+
+	handler.ServeHTTP(rr, req)
+
+	// If pdflatex fails due to injection, it returns 500. We expect 200.
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected 200 OK, got %v", rr.Code)
+	}
+}
+
+func TestServerTimeouts(t *testing.T) {
+	server := setupServer("8080")
+	if server.ReadHeaderTimeout == 0 {
+		t.Errorf("Server ReadHeaderTimeout is not configured, vulnerable to Slowloris")
 	}
 }

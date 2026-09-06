@@ -156,7 +156,15 @@ func rateLimiter(next http.HandlerFunc) http.HandlerFunc {
 		if !ok {
 			visitor = &Visitor{lastSeen: time.Now(), tokens: 5}
 			visitors[ip] = visitor
+		} else {
+			// replenish if enough time passed
+			elapsed := time.Since(visitor.lastSeen)
+			if elapsed > 1*time.Hour {
+				visitor.tokens = 5
+			}
 		}
+
+		visitor.lastSeen = time.Now()
 
 		if visitor.tokens <= 0 {
 			mu.Unlock()
@@ -181,21 +189,23 @@ type Education struct {
 }
 
 type Experience struct {
-	Company string   `json:"company"`
-	Role    string   `json:"role"`
-	Period  string   `json:"period"`
-	Bullets []string `json:"bullets"`
+	Company  string   `json:"company"`
+	Location string   `json:"location"`
+	Role     string   `json:"role"`
+	Period   string   `json:"period"`
+	Bullets  []string `json:"bullets"`
 }
 
 type Project struct {
-	Name    string   `json:"name"`
-	Link    string   `json:"link"`
-	Bullets []string `json:"bullets"`
+	Name      string   `json:"name"`
+	LinkURL   string   `json:"link_url"`
+	LinkLabel string   `json:"link_label"`
+	Bullets   []string `json:"bullets"`
 }
 
 type Language struct {
-	Name        string `json:"name"`
-	Proficiency string `json:"proficiency"`
+	Language string `json:"language"`
+	Level    string `json:"level"`
 }
 
 type Skills struct {
@@ -235,13 +245,66 @@ func texEscape(s string) string {
 	return replacer.Replace(s)
 }
 
-func generatePdfHandler(w http.ResponseWriter, r *http.Request) {
-	// Validate size
-	if r.ContentLength > 50*1024 {
-		loggerFor(r).Warn("payload too large", "op", "validation", "status", http.StatusBadRequest)
-		http.Error(w, "payload too large", http.StatusBadRequest)
-		return
+func escapeResumeData(d ResumeData) ResumeData {
+	d.Name = texEscape(d.Name)
+	d.Title = texEscape(d.Title)
+	d.Email = texEscape(d.Email)
+	d.Phone = texEscape(d.Phone)
+	d.LinkedIn = texEscape(d.LinkedIn)
+	d.GitHub = texEscape(d.GitHub)
+	d.Location = texEscape(d.Location)
+
+	for i := range d.Education {
+		d.Education[i].Institution = texEscape(d.Education[i].Institution)
+		d.Education[i].Degree = texEscape(d.Education[i].Degree)
+		d.Education[i].Period = texEscape(d.Education[i].Period)
+		for j := range d.Education[i].Notes {
+			d.Education[i].Notes[j] = texEscape(d.Education[i].Notes[j])
+		}
 	}
+
+	for i := range d.Experiences {
+		d.Experiences[i].Company = texEscape(d.Experiences[i].Company)
+		d.Experiences[i].Location = texEscape(d.Experiences[i].Location)
+		d.Experiences[i].Role = texEscape(d.Experiences[i].Role)
+		d.Experiences[i].Period = texEscape(d.Experiences[i].Period)
+		for j := range d.Experiences[i].Bullets {
+			d.Experiences[i].Bullets[j] = texEscape(d.Experiences[i].Bullets[j])
+		}
+	}
+
+	for i := range d.Projects {
+		d.Projects[i].Name = texEscape(d.Projects[i].Name)
+		d.Projects[i].LinkURL = texEscape(d.Projects[i].LinkURL)
+		d.Projects[i].LinkLabel = texEscape(d.Projects[i].LinkLabel)
+		for j := range d.Projects[i].Bullets {
+			d.Projects[i].Bullets[j] = texEscape(d.Projects[i].Bullets[j])
+		}
+	}
+
+	for i := range d.SpokenLanguages {
+		d.SpokenLanguages[i].Language = texEscape(d.SpokenLanguages[i].Language)
+		d.SpokenLanguages[i].Level = texEscape(d.SpokenLanguages[i].Level)
+	}
+
+	for i := range d.Certifications {
+		d.Certifications[i] = texEscape(d.Certifications[i])
+	}
+
+	for i := range d.Skills.Languages {
+		d.Skills.Languages[i] = texEscape(d.Skills.Languages[i])
+	}
+
+	for i := range d.Skills.Technologies {
+		d.Skills.Technologies[i] = texEscape(d.Skills.Technologies[i])
+	}
+
+	return d
+}
+
+func generatePdfHandler(w http.ResponseWriter, r *http.Request) {
+	// Validate size - limit body read to 50KB regardless of ContentLength
+	r.Body = http.MaxBytesReader(w, r.Body, 50*1024)
 
 	var data ResumeData
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
@@ -257,37 +320,76 @@ func generatePdfHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Escape latex characters in the payload
+	data = escapeResumeData(data)
+
 	// Semaphore
 	semaphore <- struct{}{}
 	defer func() { <-semaphore }()
 
-	tmpl := template.New("resume").Delims("<[", "]>")
-	tmpl, _ = tmpl.Funcs(template.FuncMap{"texEscape": texEscape}).Parse(`
+	tmpl := template.New("resume").Delims("<[", "]>").Funcs(template.FuncMap{
+		"add": func(a, b int) int { return a + b },
+	})
+	tmpl, _ = tmpl.Parse(`
 \documentclass{article}
 \usepackage{hyperref}
 \begin{document}
 \section*{<[ .Name ]>}
 \subsection*{<[ .Title ]>}
-<[ .Email ]> | <[ .Phone ]>
+<[ .Email ]> | <[ .Phone ]><[ if .Location ]> | <[ .Location ]><[ end ]><[ if .LinkedIn ]> | \href{https://<[ .LinkedIn ]>}{<[ .LinkedIn ]>}<[ end ]><[ if .GitHub ]> | \href{https://<[ .GitHub ]>}{<[ .GitHub ]>}<[ end ]>
+
+<[ if .Education ]>
+\section*{Education}
+<[ range .Education ]>
+\textbf{<[ .Institution ]>} -- <[ .Period ]> \\
+<[ .Degree ]>
+<[ if .Notes ]>
+\begin{itemize}
+<[ range .Notes ]> \item <[ . ]> <[ end ]>
+\end{itemize}
+<[ end ]>
+<[ end ]>
+<[ end ]>
+
+<[ if .Skills.Languages ]>
+\section*{Skills}
+\textbf{Languages:} <[ $lenLangs := len .Skills.Languages ]><[ range $i, $lang := .Skills.Languages ]><[ $lang ]><[ if  lt (add $i 1) $lenLangs ]> $\cdot$ <[ end ]><[ end ]>
+<[ end ]>
+
+<[ if .Skills.Technologies ]>
+\textbf{Technologies:} <[ $lenTechs := len .Skills.Technologies ]><[ range $i, $tech := .Skills.Technologies ]><[ $tech ]><[ if lt (add $i 1) $lenTechs ]> $\cdot$ <[ end ]><[ end ]>
+<[ end ]>
 
 <[ if .Experiences ]>
 \section*{Experience}
 <[ range .Experiences ]>
-\textbf{<[ .Role ]>} @ <[ .Company ]> (<[ .Period ]>)
+\textbf{<[ .Role ]>} @ <[ .Company ]> (<[ .Period ]>)<[ if .Location ]> -- <[ .Location ]><[ end ]>
 \begin{itemize}
 <[ range .Bullets ]> \item <[ . ]> <[ end ]>
 \end{itemize}
 <[ end ]>
 <[ end ]>
 
+<[ if .Projects ]>
+\section*{Projects}
+<[ range .Projects ]>
+\textbf{<[ .Name ]>} <[ if .LinkURL ]>-- \href{<[ .LinkURL ]>}{<[ if .LinkLabel ]><[ .LinkLabel ]><[ else ]><[ .LinkURL ]><[ end ]>}<[ end ]>
+<[ if .Bullets ]>
+\begin{itemize}
+<[ range .Bullets ]> \item <[ . ]> <[ end ]>
+\end{itemize}
+<[ end ]>
+<[ end ]>
+<[ end ]>
+
 <[ if .SpokenLanguages ]>
 \section*{Languages}
-<[ range .SpokenLanguages ]><[ .Name ]> (<[ .Proficiency ]>)<[ end ]>
+<[ $lenSpoken := len .SpokenLanguages ]><[ range $i, $lang := .SpokenLanguages ]><[ .Language ]> (<[ .Level ]>)<[ if lt (add $i 1) $lenSpoken ]> $\cdot$ <[ end ]><[ end ]>
 <[ end ]>
 
 <[ if .Certifications ]>
 \section*{Certifications}
-<[ range .Certifications ]><[ . ]><[ end ]>
+<[ $lenCerts := len .Certifications ]><[ range $i, $cert := .Certifications ]><[ . ]><[ if lt (add $i 1) $lenCerts ]> $\cdot$ <[ end ]><[ end ]>
 <[ end ]>
 \end{document}
 `)
@@ -330,6 +432,7 @@ func generatePdfHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	loggerFor(r).Info("pdf generated", "op", "pdf_generate", "status", http.StatusOK, "latency_ms", time.Since(pdfStart).Milliseconds(), "pdf_bytes", len(pdf))
+
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", "attachment; filename=\"curriculo.pdf\"")
 	w.Write(pdf)
@@ -355,6 +458,21 @@ func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func setupServer(port string) *http.Server {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", requestIDMiddleware(loggingMiddleware(corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "200 OK")
+	}))))
+	mux.HandleFunc("/generate-pdf", requestIDMiddleware(loggingMiddleware(corsMiddleware(rateLimiter(generatePdfHandler)))))
+
+	return &http.Server{
+		Addr:              ":" + port,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+}
+
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -362,10 +480,6 @@ func main() {
 	}
 
 	baseLogger.Info("starting", "op", "startup", "port", port)
-	http.HandleFunc("/health", requestIDMiddleware(loggingMiddleware(corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "200 OK")
-	}))))
-	http.HandleFunc("/generate-pdf", requestIDMiddleware(loggingMiddleware(corsMiddleware(rateLimiter(generatePdfHandler)))))
-	http.ListenAndServe(":"+port, nil)
+	server := setupServer(port)
+	server.ListenAndServe()
 }

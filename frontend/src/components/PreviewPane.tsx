@@ -7,19 +7,17 @@ interface PreviewPaneProps {
   onExportPdf?: () => void;
   isExporting?: boolean;
   resumeData: ResumeData;
-  previewRef: React.RefObject<HTMLDivElement | null>;
 }
 
 const PreviewPane: React.FC<PreviewPaneProps> = ({
   resumeData,
-  previewRef,
   isMobileOpen,
   onCloseMobile,
   onExportPdf,
   isExporting
 }) => {
   return (
-    <div className={`preview-pane ${isMobileOpen ? 'mobile-open' : ''}`} ref={previewRef}>
+    <div className={`preview-pane ${isMobileOpen ? 'mobile-open' : ''}`}>
       <div className="preview-modal-topbar">
         <button className="btn-back" onClick={onCloseMobile}>← Voltar</button>
         <button
