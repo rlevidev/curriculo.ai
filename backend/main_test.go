@@ -44,15 +44,19 @@ func TestHealthHandler(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	req.RemoteAddr = "127.0.0.1:8080" // Unique IP to avoid conflicts with rate limiter tests
 	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := requestIDMiddleware(loggingMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "200 OK")
-	})
+	}))
 
 	handler.ServeHTTP(rr, req)
 
 	if status := rr.Code; status != http.StatusOK {
 		t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusOK)
+	}
+
+	if id := rr.Header().Get("X-Request-ID"); id == "" {
+		t.Errorf("expected X-Request-ID header to be set")
 	}
 
 	expected := "200 OK"
@@ -70,15 +74,15 @@ func TestGeneratePdfHandler_Success(t *testing.T) {
 
 	// Prepare test data
 	testData := ResumeData{
-		Name:    "John Doe",
-		Title:   "Software Engineer",
-		Email:   "john@example.com",
-		Phone:   "123-456-7890",
+		Name:  "John Doe",
+		Title: "Software Engineer",
+		Email: "john@example.com",
+		Phone: "123-456-7890",
 		Experiences: []Experience{
 			{
-				Role:   "Senior Engineer",
+				Role:    "Senior Engineer",
 				Company: "Tech Corp",
-				Period: "2020-2023",
+				Period:  "2020-2023",
 				Bullets: []string{
 					"Led development of web applications",
 					"Improved system performance by 20%",
@@ -114,9 +118,9 @@ func TestGeneratePdfHandler_Success(t *testing.T) {
 func TestGeneratePdfHandler_MissingFields(t *testing.T) {
 	// Prepare test data with missing Name
 	testData := ResumeData{
-		Title:   "Software Engineer",
-		Email:   "john@example.com",
-		Phone:   "123-456-7890",
+		Title: "Software Engineer",
+		Email: "john@example.com",
+		Phone: "123-456-7890",
 	}
 	jsonData, _ := json.Marshal(testData)
 

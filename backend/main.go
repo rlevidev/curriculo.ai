@@ -3,9 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -25,19 +28,139 @@ type Visitor struct {
 var (
 	visitors = make(map[string]*Visitor)
 	mu       sync.Mutex
+	// ponytail: stdout JSON para coletor do host/Docker, sem agregador dedicado por enquanto
+	baseLogger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.TimeKey {
+				if t, ok := a.Value.Any().(time.Time); ok {
+					a.Value = slog.StringValue(t.UTC().Format(time.RFC3339))
+				}
+			}
+			return a
+		},
+	})).With("service", "curriculo-api")
 )
+
+type ctxKey string
+
+const requestIDKey ctxKey = "request_id"
+
+func newRequestID() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b[:])
+}
+
+func getRequestID(r *http.Request) string {
+	if v := r.Context().Value(requestIDKey); v != nil {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+// ponytail: sem PII do ResumeData nos logs, só metadados
+func loggerFor(r *http.Request) *slog.Logger {
+	return baseLogger.With("request_id", getRequestID(r))
+}
+
+func requestIDMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.Header.Get("X-Request-ID")
+		if id == "" {
+			id = newRequestID()
+		}
+		w.Header().Set("X-Request-ID", id)
+		next(w, r.WithContext(context.WithValue(r.Context(), requestIDKey, id)))
+	}
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (s *statusRecorder) WriteHeader(code int) {
+	s.status = code
+	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s *statusRecorder) Write(b []byte) (int, error) {
+	if s.status == 0 {
+		s.status = http.StatusOK
+	}
+	return s.ResponseWriter.Write(b)
+}
+
+func loggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		sr := &statusRecorder{ResponseWriter: w, status: 0}
+		next(sr, r)
+		if sr.status == 0 {
+			sr.status = http.StatusOK
+		}
+		latency := time.Since(start)
+		level := slog.LevelInfo
+		if sr.status >= 500 {
+			level = slog.LevelError
+		} else if sr.status >= 400 {
+			level = slog.LevelWarn
+		} else if r.URL.Path == "/health" {
+			level = slog.LevelDebug
+		}
+		loggerFor(r).Log(r.Context(), level, "request",
+			"op", "request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", sr.status,
+			"latency_ms", latency.Milliseconds(),
+		)
+	}
+}
+
+func init() {
+	go cleanupVisitors()
+}
+
+func getVisitorIP(remoteAddr string) string {
+	ip, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return remoteAddr
+	}
+	return ip
+}
+
+func cleanupVisitors() {
+	for {
+		time.Sleep(10 * time.Minute)
+		mu.Lock()
+		for ip, v := range visitors {
+			if time.Since(v.lastSeen) > 1*time.Hour {
+				delete(visitors, ip)
+			}
+		}
+		mu.Unlock()
+	}
+}
 
 func rateLimiter(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ip := getVisitorIP(r.RemoteAddr)
+
 		mu.Lock()
-		visitor, ok := visitors[r.RemoteAddr]
+		visitor, ok := visitors[ip]
 		if !ok {
 			visitor = &Visitor{lastSeen: time.Now(), tokens: 5}
-			visitors[r.RemoteAddr] = visitor
+			visitors[ip] = visitor
 		}
 
 		if visitor.tokens <= 0 {
 			mu.Unlock()
+			loggerFor(r).Warn("rate limited", "op", "rate_limit", "status", http.StatusTooManyRequests)
 			http.Error(w, "too many requests", http.StatusTooManyRequests)
 			return
 		}
@@ -115,18 +238,21 @@ func texEscape(s string) string {
 func generatePdfHandler(w http.ResponseWriter, r *http.Request) {
 	// Validate size
 	if r.ContentLength > 50*1024 {
+		loggerFor(r).Warn("payload too large", "op", "validation", "status", http.StatusBadRequest)
 		http.Error(w, "payload too large", http.StatusBadRequest)
 		return
 	}
 
 	var data ResumeData
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		loggerFor(r).Warn("invalid payload", "op", "validation", "status", http.StatusBadRequest, "error", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	// Simple validation
 	if len(data.Name) == 0 || len(data.Title) == 0 {
+		loggerFor(r).Warn("missing required fields", "op", "validation", "status", http.StatusBadRequest)
 		http.Error(w, "missing required fields", http.StatusBadRequest)
 		return
 	}
@@ -169,15 +295,17 @@ func generatePdfHandler(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	tmpl.Execute(&buf, data)
 
-	dir, err := ioutil.TempDir("", "resume")
+	dir, err := os.MkdirTemp("", "resume")
 	if err != nil {
+		loggerFor(r).Error("tempdir failed", "op", "pdf_generate", "status", http.StatusInternalServerError, "error", err.Error())
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	defer os.RemoveAll(dir)
 
 	texPath := filepath.Join(dir, "resume.tex")
-	if err := ioutil.WriteFile(texPath, buf.Bytes(), 0644); err != nil {
+	if err := os.WriteFile(texPath, buf.Bytes(), 0644); err != nil {
+		loggerFor(r).Error("write tex failed", "op", "pdf_generate", "status", http.StatusInternalServerError, "error", err.Error())
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -185,19 +313,23 @@ func generatePdfHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 
+	pdfStart := time.Now()
 	cmd := exec.CommandContext(ctx, "pdflatex", "-no-shell-escape", "-output-directory", dir, texPath)
 	if err := cmd.Run(); err != nil {
+		loggerFor(r).Error("pdflatex failed", "op", "pdf_generate", "status", http.StatusInternalServerError, "latency_ms", time.Since(pdfStart).Milliseconds(), "error", err.Error())
 		http.Error(w, "failed to generate PDF", http.StatusInternalServerError)
 		return
 	}
 
 	pdfPath := filepath.Join(dir, "resume.pdf")
-	pdf, err := ioutil.ReadFile(pdfPath)
+	pdf, err := os.ReadFile(pdfPath)
 	if err != nil {
+		loggerFor(r).Error("read pdf failed", "op", "pdf_generate", "status", http.StatusInternalServerError, "error", err.Error())
 		http.Error(w, "failed to read generated PDF", http.StatusInternalServerError)
 		return
 	}
 
+	loggerFor(r).Info("pdf generated", "op", "pdf_generate", "status", http.StatusOK, "latency_ms", time.Since(pdfStart).Milliseconds(), "pdf_bytes", len(pdf))
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", "attachment; filename=\"curriculo.pdf\"")
 	w.Write(pdf)
@@ -229,10 +361,11 @@ func main() {
 		port = "8080"
 	}
 
-	http.HandleFunc("/health", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	baseLogger.Info("starting", "op", "startup", "port", port)
+	http.HandleFunc("/health", requestIDMiddleware(loggingMiddleware(corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "200 OK")
-	}))
-	http.HandleFunc("/generate-pdf", corsMiddleware(rateLimiter(generatePdfHandler)))
+	}))))
+	http.HandleFunc("/generate-pdf", requestIDMiddleware(loggingMiddleware(corsMiddleware(rateLimiter(generatePdfHandler)))))
 	http.ListenAndServe(":"+port, nil)
 }
