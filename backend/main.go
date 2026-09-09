@@ -419,7 +419,7 @@ func generatePdfHandler(w http.ResponseWriter, r *http.Request) {
 \textbf{\color{ink}Languages:} <[ $lenLangs := len .Skills.Languages ]><[ range $i, $lang := .Skills.Languages ]><[ $lang ]><[ if lt (add $i 1) $lenLangs ]>, <[ end ]><[ end ]>
 <[ end ]>
 <[ if .Skills.Technologies ]>
-<[ if .Skills.Languages ]> \\[4pt]
+<[ if .Skills.Languages ]> \par\vspace{4pt}
 <[ end ]>
 \textbf{\color{ink}Technologies:} <[ $lenTechs := len .Skills.Technologies ]><[ range $i, $tech := .Skills.Technologies ]><[ $tech ]><[ if lt (add $i 1) $lenTechs ]>, <[ end ]><[ end ]>
 <[ end ]>
