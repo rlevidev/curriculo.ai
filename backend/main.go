@@ -331,66 +331,144 @@ func generatePdfHandler(w http.ResponseWriter, r *http.Request) {
 		"add": func(a, b int) int { return a + b },
 	})
 	tmpl, _ = tmpl.Parse(`
-\documentclass{article}
+%!TEX program = pdflatex
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[left=0.6in,right=0.6in,top=0.45in,bottom=0.45in]{geometry}
+\usepackage{array}
+\usepackage{xcolor}
 \usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage[utf8]{inputenc}
+\usepackage{libertine}
+
+\definecolor{ink}{HTML}{211F1A}
+\definecolor{muted}{HTML}{7A715F}
+\definecolor{hline}{HTML}{E1DCCD}
+\definecolor{bodytext}{HTML}{3A362E}
+
+\color{ink}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=ink,
+    urlcolor=ink,
+    citecolor=ink,
+    pdfborder={0 0 0}
+}
+
+\titleformat{\section}
+  {\normalfont\sffamily\bfseries\small\color{ink}}
+  {}{0em}{}
+  [\vspace{2pt}{\color{hline}\titlerule[0.6pt]}]
+\titlespacing{\section}{0pt}{4pt}{2pt}
+
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.5pt}
+\setlist[itemize]{itemsep=0.5pt, parsep=0.5pt, topsep=1pt, leftmargin=15pt}
+
+\clubpenalty=10000
+\widowpenalty=10000
+\displaywidowpenalty=10000
+\raggedbottom
+
+\newcommand{\entryhead}[2]{%
+  \noindent{\rmfamily\bfseries #1}\hfill{\sffamily\small\color{muted}#2}\\
+}
+\newcommand{\entrysub}[1]{%
+  {\sffamily\itshape\small\color{muted}#1}\par
+}
+
 \begin{document}
-\section*{<[ .Name ]>}
-\subsection*{<[ .Title ]>}
-<[ .Email ]> | <[ .Phone ]><[ if .Location ]> | <[ .Location ]><[ end ]><[ if .LinkedIn ]> | \href{https://<[ .LinkedIn ]>}{<[ .LinkedIn ]>}<[ end ]><[ if .GitHub ]> | \href{https://<[ .GitHub ]>}{<[ .GitHub ]>}<[ end ]>
+
+\begin{center}
+    {\rmfamily\Huge\bfseries <[ .Name ]>}\\[2pt]
+    {\sffamily\large\color{muted}<[ .Title ]>}\\[2pt]
+    {\sffamily\small\color{muted}
+      <[ .Email ]><[ if .Phone ]> \textperiodcentered\ <[ .Phone ]><[ end ]><[ if .Location ]> \textperiodcentered\ <[ .Location ]><[ end ]><[ if .LinkedIn ]> \textperiodcentered\ \href{https://<[ .LinkedIn ]>}{LinkedIn}<[ end ]><[ if .GitHub ]> \textperiodcentered\ \href{https://<[ .GitHub ]>}{GitHub}<[ end ]>%
+    }
+\end{center}
+
+\vspace{4pt}
+\noindent{\color{ink}\rule{\linewidth}{1.1pt}}
+\vspace{1pt}
 
 <[ if .Education ]>
-\section*{Education}
+\section{EDUCATION}
 <[ range .Education ]>
-\textbf{<[ .Institution ]>} -- <[ .Period ]> \\
-<[ .Degree ]>
+\entryhead{<[ .Institution ]>}{<[ .Period ]>}
+\entrysub{<[ .Degree ]>}
 <[ if .Notes ]>
+{\sffamily\small\color{bodytext}
 \begin{itemize}
-<[ range .Notes ]> \item <[ . ]> <[ end ]>
+<[ range .Notes ]>    \item <[ . ]>
+<[ end ]>
 \end{itemize}
+}
 <[ end ]>
 <[ end ]>
 <[ end ]>
 
+<[ if or .Skills.Languages .Skills.Technologies ]>
+\section{TECHNICAL SKILLS}
+{\sffamily\small\color{bodytext}
 <[ if .Skills.Languages ]>
-\section*{Skills}
-\textbf{Languages:} <[ $lenLangs := len .Skills.Languages ]><[ range $i, $lang := .Skills.Languages ]><[ $lang ]><[ if  lt (add $i 1) $lenLangs ]> $\cdot$ <[ end ]><[ end ]>
+\textbf{\color{ink}Languages:} <[ $lenLangs := len .Skills.Languages ]><[ range $i, $lang := .Skills.Languages ]><[ $lang ]><[ if lt (add $i 1) $lenLangs ]>, <[ end ]><[ end ]>
 <[ end ]>
-
 <[ if .Skills.Technologies ]>
-\textbf{Technologies:} <[ $lenTechs := len .Skills.Technologies ]><[ range $i, $tech := .Skills.Technologies ]><[ $tech ]><[ if lt (add $i 1) $lenTechs ]> $\cdot$ <[ end ]><[ end ]>
+<[ if .Skills.Languages ]> \\[4pt]
+<[ end ]>
+\textbf{\color{ink}Technologies:} <[ $lenTechs := len .Skills.Technologies ]><[ range $i, $tech := .Skills.Technologies ]><[ $tech ]><[ if lt (add $i 1) $lenTechs ]>, <[ end ]><[ end ]>
+<[ end ]>
+}
 <[ end ]>
 
 <[ if .Experiences ]>
-\section*{Experience}
+\section{PROFESSIONAL EXPERIENCE}
 <[ range .Experiences ]>
-\textbf{<[ .Role ]>} @ <[ .Company ]> (<[ .Period ]>)<[ if .Location ]> -- <[ .Location ]><[ end ]>
+\entryhead{<[ .Company ]>}{<[ .Period ]>}
+\entrysub{<[ .Role ]><[ if .Location ]> \hfill <[ .Location ]><[ end ]>}
+{\sffamily\small\color{bodytext}
 \begin{itemize}
-<[ range .Bullets ]> \item <[ . ]> <[ end ]>
+<[ range .Bullets ]>    \item <[ . ]>
+<[ end ]>
 \end{itemize}
+}
 <[ end ]>
 <[ end ]>
 
 <[ if .Projects ]>
-\section*{Projects}
+\section{PROJECTS}
 <[ range .Projects ]>
-\textbf{<[ .Name ]>} <[ if .LinkURL ]>-- \href{<[ .LinkURL ]>}{<[ if .LinkLabel ]><[ .LinkLabel ]><[ else ]><[ .LinkURL ]><[ end ]>}<[ end ]>
+\entryhead{<[ .Name ]>}{<[ if .LinkURL ]>\href{<[ .LinkURL ]>}{<[ if .LinkLabel ]><[ .LinkLabel ]><[ else ]>Link<[ end ]>}<[ end ]>}
 <[ if .Bullets ]>
+{\sffamily\small\color{bodytext}
 \begin{itemize}
-<[ range .Bullets ]> \item <[ . ]> <[ end ]>
+<[ range .Bullets ]>    \item <[ . ]>
+<[ end ]>
 \end{itemize}
+}
 <[ end ]>
 <[ end ]>
 <[ end ]>
 
 <[ if .SpokenLanguages ]>
-\section*{Languages}
-<[ $lenSpoken := len .SpokenLanguages ]><[ range $i, $lang := .SpokenLanguages ]><[ .Language ]> (<[ .Level ]>)<[ if lt (add $i 1) $lenSpoken ]> $\cdot$ <[ end ]><[ end ]>
+\section{LANGUAGES}
+{\sffamily\small\color{bodytext}
+<[ range $i, $lang := .SpokenLanguages ]><[ if $i ]> \textperiodcentered\ <[ end ]>\textbf{\color{ink}<[ .Language ]>:} <[ .Level ]><[ end ]>
+}
 <[ end ]>
 
 <[ if .Certifications ]>
-\section*{Certifications}
-<[ $lenCerts := len .Certifications ]><[ range $i, $cert := .Certifications ]><[ . ]><[ if lt (add $i 1) $lenCerts ]> $\cdot$ <[ end ]><[ end ]>
+\section{CERTIFICATIONS}
+{\sffamily\small\color{bodytext}
+<[ $lenCerts := len .Certifications ]><[ range $i, $cert := .Certifications ]><[ . ]><[ if lt (add $i 1) $lenCerts ]> \textperiodcentered\ <[ end ]><[ end ]>
+}
 <[ end ]>
+
 \end{document}
 `)
 
