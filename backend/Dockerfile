@@ -3,6 +3,7 @@ FROM golang:1.26.3-alpine AS builder
 WORKDIR /app
 COPY go.mod ./
 # No go.sum yet, wait till we have one or just copy .
+ARG CACHEBUST=2026-09-09-001
 COPY . .
 RUN go build -o main .
 
