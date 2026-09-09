@@ -417,10 +417,19 @@ func generatePdfHandler(w http.ResponseWriter, r *http.Request) {
 
 	pdfStart := time.Now()
 	cmd := exec.CommandContext(ctx, "pdflatex", "-no-shell-escape", "-output-directory", dir, texPath)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
 	if err := cmd.Run(); err != nil {
-		loggerFor(r).Error("pdflatex failed", "op", "pdf_generate", "status", http.StatusInternalServerError, "latency_ms", time.Since(pdfStart).Milliseconds(), "error", err.Error(), "stderr", stderr.String())
+		logOutput := output.String()
+		if len(logOutput) > 8000 {
+			logOutput = logOutput[len(logOutput)-8000:]
+		}
+		texContent := string(buf.Bytes())
+		if len(texContent) > 4000 {
+			texContent = texContent[len(texContent)-4000:]
+		}
+		loggerFor(r).Error("pdflatex failed", "op", "pdf_generate", "status", http.StatusInternalServerError, "latency_ms", time.Since(pdfStart).Milliseconds(), "error", err.Error(), "output", logOutput, "tex", texContent)
 		http.Error(w, "failed to generate PDF", http.StatusInternalServerError)
 		return
 	}
