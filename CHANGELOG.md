@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file.
 - **Error context logging:** validation failures (400), rate limits (429), and PDF generation errors (500) with operation tags
 - **Startup log:** server port and startup event on boot
 
+### Changed
+
+- **Backend reorganization:** split `backend/main.go` (~580 lines) into `http.go`, `pdf.go`, `ratelimit.go`, `texescape.go`, `types.go` keeping the monolith (no new dependencies, public contract unchanged); coupled fixes — compile LaTeX template once via `sync.Once`, promote `strings.Replacer` to global, check `w.Write` error, handle `ListenAndServe` error, generic invalid-payload message; migrate test helpers to `Limiter` methods; add English doc comments on all functions ([#21](https://github.com/rlevidev/curriculo.ai/issues/21), [#22](https://github.com/rlevidev/curriculo.ai/pull/22))
+
 ## [1.0.0] - 2026-09-04
 
 ### Security
