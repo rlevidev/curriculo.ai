@@ -41,9 +41,7 @@ func TestTexEscape(t *testing.T) {
 }
 
 func resetVisitors() {
-	mu.Lock()
-	visitors = make(map[string]*Visitor)
-	mu.Unlock()
+	defaultLimiter.Reset()
 }
 
 // Test health handler
@@ -186,10 +184,8 @@ func TestRateLimiter(t *testing.T) {
 		return
 	}
 
-	// Wait for refill window (e.g. mock it by modifying lastSeen)
-	mu.Lock()
-	visitors[ip].lastSeen = time.Now().Add(-2 * time.Hour)
-	mu.Unlock()
+	// Wait for refill window (mock by pushing lastSeen back via test helper)
+	defaultLimiter.SetLastSeenForTest(ip, time.Now().Add(-2*time.Hour))
 
 	// Request should succeed now
 	req = httptest.NewRequest(http.MethodGet, "/test", nil)
