@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-29
+
 ### Added
 
 - **Structured JSON logs:** slog stdlib with UTC timestamps and `service=curriculo-api` for production log aggregation
