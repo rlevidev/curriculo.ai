@@ -11,10 +11,19 @@ All notable changes to this project will be documented in this file.
 - **Request metadata logging:** method, path, status code, and latency in milliseconds for every HTTP request
 - **Error context logging:** validation failures (400), rate limits (429), and PDF generation errors (500) with operation tags
 - **Startup log:** server port and startup event on boot
+- **LaTeX template redesign:** replace the skeleton embedded template with a styled resume layout — Libertine (serif) + Biolinum (sans), custom palette (`ink #211F1A`, `muted #7A715F`, `hline #E1DCCD`, `bodytext #3A362E`), section titles via `titlesec` with thin colored rules, `entryhead`/`entrysub` commands, `enumitem` lists, tight margins (0.6in sides, 0.45in top/bottom), no page numbering, widow/orphan penalties ([#16](https://github.com/rlevidev/curriculo.ai/pull/16), [#19](https://github.com/rlevidev/curriculo.ai/pull/19))
+
+### Fixed
+
+- **Dockerfile Go version:** bump base image from `golang:1.24-alpine` to `golang:1.26.3-alpine`; `go.mod` required Go >= 1.26.3, so the Render build failed at the `go build` step ([#15](https://github.com/rlevidev/curriculo.ai/pull/15))
+- **PDF skills block:** replace `\\[4pt]` with `\par\vspace{4pt}` in the TECHNICAL SKILLS section when both `Languages` and `Technologies` are present — the `\\` was emitted outside a paragraph and aborted compilation with `! LaTeX Error: There's no line here to end.` ([#20](https://github.com/rlevidev/curriculo.ai/pull/20))
+- **PDF generation diagnostics:** capture `pdflatex` stderr and include it in the error log, since `exit status 1` alone hid the real compile failure in production ([#18](https://github.com/rlevidev/curriculo.ai/pull/18))
 
 ### Changed
 
 - **Backend reorganization:** split `backend/main.go` (~580 lines) into `http.go`, `pdf.go`, `ratelimit.go`, `texescape.go`, `types.go` keeping the monolith (no new dependencies, public contract unchanged); coupled fixes — compile LaTeX template once via `sync.Once`, promote `strings.Replacer` to global, check `w.Write` error, handle `ListenAndServe` error, generic invalid-payload message; migrate test helpers to `Limiter` methods; add English doc comments on all functions ([#21](https://github.com/rlevidev/curriculo.ai/issues/21), [#22](https://github.com/rlevidev/curriculo.ai/pull/22))
+- **Local development environment:** add `docker-compose.yml` running the backend on `:8080` with `FRONTEND_ORIGIN=http://localhost:5173`; add `frontend/.env.development` with `VITE_API_URL`; make `vite.config.ts` `base` environment-aware (`/` in development, `/curriculo.ai/` in production); document setup and environment differences in the README. Production behavior unchanged ([#23](https://github.com/rlevidev/curriculo.ai/issues/23), [#24](https://github.com/rlevidev/curriculo.ai/pull/24))
+- **CI backend pipeline:** add an explicit `go build` step so compilation is verified before deployment ([#17](https://github.com/rlevidev/curriculo.ai/pull/17))
 
 ## [1.0.0] - 2026-09-04
 
@@ -44,6 +53,7 @@ All notable changes to this project will be documented in this file.
 - **Draft migration:** normalize old localStorage drafts field-by-field against defaults, version the storage key (`resume-draft-v2`) to prevent crashes from changed data structures
 - **Export error handling:** check `content-type` before parsing response JSON, show a friendly error message when the server returns HTML (e.g. 502 Bad Gateway)
 - **Test isolation:** add `resetVisitors()` helper to prevent global state leakage between rate limiter tests
+- **Frontend tests in CI:** run `npm test` in the CI workflow and add `vitest`, `jsdom`, and Testing Library as dev dependencies — the frontend suite existed but was never executed by the pipeline ([#9](https://github.com/rlevidev/curriculo.ai/issues/9), [#10](https://github.com/rlevidev/curriculo.ai/pull/10))
 - **Deploy workflow permissions:** add `pages: write` permission to fix 403 error on frontend deployment
 - **Vite configuration:** set base path for correct asset loading
 - **CORS origin via env, pdflatex timeout context, export gating, ATS inline**
